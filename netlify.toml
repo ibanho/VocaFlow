@@ -1,0 +1,11 @@
+[build]
+  command = "bun run build -m pwa"
+  publish = "dist/pwa"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

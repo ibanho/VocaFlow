@@ -1,0 +1,80 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Bun
+.bun/
+# (bun.lockb is committed — do NOT ignore)
+
+# npm/yarn/pnpm 락파일 금지 (Bun만 사용)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Quasar
+/dist
+/src-cordova/node_modules
+/src-cordova/platforms
+/src-cordova/plugins
+/src-cordova/www
+/src-capacitor/www
+/src-capacitor/node_modules
+.quasar
+
+# Electron
+/dist-electron
+/src-electron/icons/icon.*
+
+# Build output
+/build
+/out
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun-debug.log*
+
+# Testing
+/coverage
+/.nyc_output
+
+# Supabase
+.supabase/
+supabase/.temp/
+
+# Netlify
+.netlify/
+
+# TypeScript
+*.tsbuildinfo
+
+# Temporary
+*.tmp
+*.temp
+.cache/
