@@ -78,3 +78,9 @@ supabase/.temp/
 *.tmp
 *.temp
 .cache/
+
+# agentic ai files
+/.agent
+
+# claude 
+/.claude
