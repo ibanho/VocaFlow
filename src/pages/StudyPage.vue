@@ -89,16 +89,19 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from 'src/stores/authStore';
 import { buildSession } from 'src/lib/reviews/session';
 import { repository, type Card } from 'src/lib/reviews/repository';
-import type { ReviewInput } from 'src/lib/leitner/judge';
+import type { ReviewInput, ReviewResult, SkipInput } from 'src/lib/leitner/judge';
 import type { BoxLevel } from 'src/lib/leitner/constants';
 import FlashCard from 'src/components/FlashCard.vue';
+import { useQuasar } from 'quasar';
 
 const authStore = useAuthStore();
+const $q = useQuasar();
 const session = ref<Card[]>([]);
 const currentIndex = ref(0);
 const loading = ref(true);
 const isFlipped = ref(false);
 const sessionComplete = ref(false);
+const transitioning = ref(false);
 
 let cardShownAt = 0;
 let flipResponseMs = 0;
@@ -130,7 +133,7 @@ onUnmounted(() => {
 
 // eslint-disable-next-line no-undef
 const handleKeydown = (e: KeyboardEvent) => {
-  if (sessionComplete.value || loading.value) return;
+  if (sessionComplete.value || loading.value || transitioning.value) return;
 
   if (!isFlipped.value) {
     if (e.code === 'Space' || e.key === 'Enter') {
@@ -152,14 +155,15 @@ const handleKeydown = (e: KeyboardEvent) => {
 };
 
 const onFlip = () => {
-  if (isFlipped.value) return;
+  if (isFlipped.value || transitioning.value) return;
   flipResponseMs = Date.now() - cardShownAt;
   isFlipped.value = true;
 };
 
 const handleAction = async (action: 'fail' | 'skip' | 'pass') => {
-  if (!isFlipped.value || !authStore.user || !currentCard.value) return;
+  if (!isFlipped.value || !authStore.user || !currentCard.value || transitioning.value) return;
 
+  transitioning.value = true;
   const card = currentCard.value;
   
   if (action !== 'skip') {
@@ -172,28 +176,69 @@ const handleAction = async (action: 'fail' | 'skip' | 'pass') => {
     };
     
     // Submit in background so UI doesn't block
-    repository.submitReview(authStore.user.id, card.id, input).catch(console.error);
+    repository.submitReview(authStore.user.id, card.id, input).then(res => showJudgeNotification(res)).catch(console.error);
   } else {
-    // skip action -> next_review_at = now + 4h (handled via judgeSkip or just simple upsert)
-    // For MVP, we'll implement skip by simply deferring next_review_at by 4 hours
-    // This is optional for MVP, or we can just ignore and it stays in due list
+    const input: SkipInput = {
+      current_box: (card.box_level as BoxLevel),
+      now: new Date()
+    };
+    repository.submitSkip(authStore.user.id, card.id, input).then(res => showJudgeNotification(res)).catch(console.error);
   }
 
   nextCard();
+};
+
+const showJudgeNotification = (res: ReviewResult) => {
+  let message = '';
+  let type = 'info';
+  
+  switch(res.reason) {
+    case 'WRONG_ANSWER':
+      message = '오답: 2단계 강등되었습니다 📉';
+      type = 'negative';
+      break;
+    case 'SLOW_RESPONSE_HOLD':
+      message = '정답이지만 3초 초과: 단계가 유지됩니다 ⏱️';
+      type = 'warning';
+      break;
+    case 'PROMOTE':
+      message = `정답: Box ${res.next_box}(으)로 승급되었습니다! 🚀`;
+      type = 'positive';
+      break;
+    case 'MASTERED':
+      message = '마스터! 단어가 장기 기억에 저장되었습니다 🏆';
+      type = 'positive';
+      break;
+    case 'SKIP':
+      message = '보류: 4시간 뒤에 다시 봅니다 ⏭️';
+      type = 'info';
+      break;
+  }
+  
+  $q.notify({
+    message,
+    type,
+    position: 'top',
+    timeout: 1500,
+  });
 };
 
 const nextCard = () => {
   isFlipped.value = false;
   
   if (currentIndex.value < session.value.length - 1) {
-    currentIndex.value++;
-    // Add a small delay so the flip animation resets smoothly before the text changes
     // eslint-disable-next-line no-undef
     setTimeout(() => {
+      currentIndex.value++;
       cardShownAt = Date.now();
-    }, 300);
+      transitioning.value = false;
+    }, 300); // Swap text when card is at 90 degrees (halfway through 0.6s transition)
   } else {
-    sessionComplete.value = true;
+    // eslint-disable-next-line no-undef
+    setTimeout(() => {
+      sessionComplete.value = true;
+      transitioning.value = false;
+    }, 300);
   }
 };
 </script>
