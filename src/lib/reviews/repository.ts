@@ -1,5 +1,6 @@
 import { getSupabase } from '../supabase';
 import { type ReviewInput, judgeReview, type ReviewResult, type SkipInput, judgeSkip } from '../leitner/judge';
+import type { BoxLevel } from '../leitner/constants';
 
 export interface Card {
   id: string; // word_id
@@ -98,18 +99,22 @@ export const repository = {
     wordId: string,
     input: ReviewInput
   ): Promise<ReviewResult> {
-    // 1. Get judge result
-    const result = judgeReview(input);
+    // 1. Get judge result (Adjust box 0 to box 1 to prevent DB constraints and NaN review intervals)
+    const adjustedBox = (input.current_box as any) === 0 ? 1 : input.current_box;
+    const adjustedInput: ReviewInput = {
+      ...input,
+      current_box: adjustedBox as BoxLevel
+    };
+    const result = judgeReview(adjustedInput);
     const supabase = getSupabase();
 
-    // 2. Insert to review_logs
+    // 2. Insert to review_logs (Mapped to DB schema column: result)
     const { error: logError } = await supabase.from('review_logs').insert({
       user_id: userId,
       word_id: wordId,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      box_before: (input.current_box as any) === 0 ? 1 : input.current_box, // treat new words as box 1 transition
+      box_before: adjustedBox,
       box_after: result.next_box,
-      is_correct: input.is_correct,
+      result: input.is_correct ? 'pass' : 'fail',
       response_ms: input.response_ms,
       reviewed_at: input.now.toISOString(),
     });
@@ -117,12 +122,13 @@ export const repository = {
     if (logError) throw logError;
 
     // 3. Get current stats to update streak and wrong count
-    const { data: curr } = await supabase
+    const { data: progressData } = await supabase
       .from('user_progress')
       .select('wrong_count, correct_streak')
       .eq('user_id', userId)
-      .eq('word_id', wordId)
-      .single();
+      .eq('word_id', wordId);
+
+    const curr = progressData && progressData.length > 0 ? progressData[0] : null;
 
     let wrongCount = curr?.wrong_count || 0;
     let correctStreak = curr?.correct_streak || 0;
@@ -155,14 +161,35 @@ export const repository = {
     input: SkipInput
   ): Promise<ReviewResult> {
     const supabase = getSupabase();
-    const result = judgeSkip(input);
+    // Adjust box 0 to box 1 to prevent DB check constraint violation (box_after >= 1)
+    const adjustedBox = (input.current_box as any) === 0 ? 1 : input.current_box;
+    const adjustedInput: SkipInput = {
+      ...input,
+      current_box: adjustedBox as BoxLevel
+    };
+    const result = judgeSkip(adjustedInput);
 
-    const { data: curr } = await supabase
+    // 1. Insert to review_logs for skip record
+    const { error: logError } = await supabase.from('review_logs').insert({
+      user_id: userId,
+      word_id: wordId,
+      box_before: adjustedBox,
+      box_after: result.next_box,
+      result: 'skip',
+      response_ms: null,
+      reviewed_at: input.now.toISOString(),
+    });
+
+    if (logError) throw logError;
+
+    // 2. Upsert to user_progress
+    const { data: progressData } = await supabase
       .from('user_progress')
       .select('wrong_count, correct_streak')
       .eq('user_id', userId)
-      .eq('word_id', wordId)
-      .single();
+      .eq('word_id', wordId);
+
+    const curr = progressData && progressData.length > 0 ? progressData[0] : null;
 
     const { error: progError } = await supabase.from('user_progress').upsert({
       user_id: userId,

@@ -34,12 +34,19 @@ CREATE POLICY "own_logs_select" ON public.review_logs
 CREATE POLICY "own_logs_insert" ON public.review_logs
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
--- dictionary_cache: 공용 캐시 — 인증 사용자 읽기, 쓰기는 서비스 롤 전용
+-- dictionary_cache: 공용 캐시 — 누구나 조회 및 삽입/갱신 가능 (사전 API 비용 절감 목적)
 ALTER TABLE public.dictionary_cache ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "dict_cache_read_authenticated" ON public.dictionary_cache;
+DROP POLICY IF EXISTS "dict_cache_read_all" ON public.dictionary_cache;
+DROP POLICY IF EXISTS "dict_cache_insert_all" ON public.dictionary_cache;
+DROP POLICY IF EXISTS "dict_cache_update_all" ON public.dictionary_cache;
 
-CREATE POLICY "dict_cache_read_authenticated" ON public.dictionary_cache
-  FOR SELECT TO authenticated USING (true);
+CREATE POLICY "dict_cache_read_all" ON public.dictionary_cache
+  FOR SELECT USING (true);
+CREATE POLICY "dict_cache_insert_all" ON public.dictionary_cache
+  FOR INSERT WITH CHECK (true);
+CREATE POLICY "dict_cache_update_all" ON public.dictionary_cache
+  FOR UPDATE USING (true) WITH CHECK (true);
 
 -- ai_generated_examples: 인증 사용자 읽기 (검수 대시보드), 쓰기는 서비스 롤 전용
 ALTER TABLE public.ai_generated_examples ENABLE ROW LEVEL SECURITY;

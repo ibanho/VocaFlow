@@ -39,6 +39,7 @@
               class="full-width q-py-sm" 
               unelevated 
               rounded
+              tabindex="-1"
               @click="handleAction('fail')"
               :disable="!isFlipped"
             >
@@ -54,6 +55,7 @@
               class="full-width q-py-sm" 
               outline 
               rounded
+              tabindex="-1"
               @click="handleAction('skip')"
               :disable="!isFlipped"
             >
@@ -69,6 +71,7 @@
               class="full-width q-py-sm" 
               unelevated 
               rounded
+              tabindex="-1"
               @click="handleAction('pass')"
               :disable="!isFlipped"
             >
@@ -89,7 +92,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from 'src/stores/authStore';
 import { buildSession } from 'src/lib/reviews/session';
 import { repository, type Card } from 'src/lib/reviews/repository';
-import type { ReviewInput, ReviewResult, SkipInput } from 'src/lib/leitner/judge';
+import { judgeReview, judgeSkip, type ReviewInput, type ReviewResult, type SkipInput } from 'src/lib/leitner/judge';
 import type { BoxLevel } from 'src/lib/leitner/constants';
 import FlashCard from 'src/components/FlashCard.vue';
 import { useQuasar } from 'quasar';
@@ -124,11 +127,11 @@ onMounted(async () => {
     }
   }
   
-  window.addEventListener('keydown', handleKeydown);
+  window.addEventListener('keydown', handleKeydown, true);
 });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('keydown', handleKeydown, true);
 });
 
 // eslint-disable-next-line no-undef
@@ -138,6 +141,7 @@ const handleKeydown = (e: KeyboardEvent) => {
   if (!isFlipped.value) {
     if (e.code === 'Space' || e.key === 'Enter') {
       e.preventDefault();
+      e.stopPropagation();
       onFlip();
     }
     return;
@@ -145,17 +149,29 @@ const handleKeydown = (e: KeyboardEvent) => {
 
   // Handle actions
   if (e.key === '1') {
+    e.preventDefault();
+    e.stopPropagation();
     handleAction('fail');
   } else if (e.code === 'Space') {
     e.preventDefault(); // Prevent page scroll
+    e.stopPropagation();
     handleAction('skip');
   } else if (e.key === '2') {
+    e.preventDefault();
+    e.stopPropagation();
     handleAction('pass');
   }
 };
 
 const onFlip = () => {
   if (isFlipped.value || transitioning.value) return;
+  
+  // Clear any residual notification when flipping a new card
+  if (activeNotification) {
+    activeNotification();
+    activeNotification = null;
+  }
+
   flipResponseMs = Date.now() - cardShownAt;
   isFlipped.value = true;
 };
@@ -163,32 +179,63 @@ const onFlip = () => {
 const handleAction = async (action: 'fail' | 'skip' | 'pass') => {
   if (!isFlipped.value || !authStore.user || !currentCard.value || transitioning.value) return;
 
+  // Clear focus from active button to prevent spacebar from re-triggering click events
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+
   transitioning.value = true;
   const card = currentCard.value;
   
+  // Adjust box 0 to box 1 to prevent DB constraints and NaN review intervals in Leitner engine
+  const adjustedBox = (card.box_level as any) === 0 ? 1 : card.box_level;
+  let result: ReviewResult;
+
   if (action !== 'skip') {
     const isCorrect = action === 'pass';
     const input: ReviewInput = {
       is_correct: isCorrect,
       response_ms: flipResponseMs,
-      current_box: (card.box_level as BoxLevel), // Type assertion to BoxLevel for MVP
+      current_box: (adjustedBox as BoxLevel),
       now: new Date()
     };
     
-    // Submit in background so UI doesn't block
-    repository.submitReview(authStore.user.id, card.id, input).then(res => showJudgeNotification(res)).catch(console.error);
+    // 1. Calculate result synchronously for 0ms instant feedback
+    result = judgeReview(input);
+
+    // 2. Filter: Only notify user on actual promotion (PROMOTE) or mastering (MASTERED)
+    if (result.reason === 'PROMOTE' || result.reason === 'MASTERED') {
+      showJudgeNotification(result);
+    }
+
+    // 3. Submit to Supabase in the background (no UI blockage or delayed popups)
+    repository.submitReview(authStore.user.id, card.id, input).catch(console.error);
   } else {
     const input: SkipInput = {
-      current_box: (card.box_level as BoxLevel),
+      current_box: (adjustedBox as BoxLevel),
       now: new Date()
     };
-    repository.submitSkip(authStore.user.id, card.id, input).then(res => showJudgeNotification(res)).catch(console.error);
+
+    // 1. Calculate skip result synchronously
+    result = judgeSkip(input);
+
+    // 2. Skips do not require PROMOTE or MASTERED notifications, so we bypass showJudgeNotification
+
+    // 3. Submit in background
+    repository.submitSkip(authStore.user.id, card.id, input).catch(console.error);
   }
 
   nextCard();
 };
 
+let activeNotification: (() => void) | null = null;
+
 const showJudgeNotification = (res: ReviewResult) => {
+  // Clear previous notification to prevent stacking/accumulation
+  if (activeNotification) {
+    activeNotification();
+  }
+
   let message = '';
   let type = 'info';
   
@@ -215,17 +262,25 @@ const showJudgeNotification = (res: ReviewResult) => {
       break;
   }
   
-  $q.notify({
+  activeNotification = $q.notify({
     message,
     type,
     position: 'top',
     timeout: 1500,
+    group: 'review-result', // Group same type of reviews to transition naturally
+    badgeClass: 'hidden-badge', // Hide the count badge completely via global CSS
   });
 };
 
 const nextCard = () => {
   isFlipped.value = false;
   
+  // Clear any residual notification when transitioning to the next card
+  if (activeNotification) {
+    activeNotification();
+    activeNotification = null;
+  }
+
   if (currentIndex.value < session.value.length - 1) {
     // eslint-disable-next-line no-undef
     setTimeout(() => {

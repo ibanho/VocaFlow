@@ -21,6 +21,10 @@ export default [
         document: 'readonly',
         process: 'readonly',
         console: 'readonly',
+        HTMLElement: 'readonly',
+        SpeechSynthesisUtterance: 'readonly',
+        speechSynthesis: 'readonly',
+        navigator: 'readonly',
       },
     },
     plugins: {

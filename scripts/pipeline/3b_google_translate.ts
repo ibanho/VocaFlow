@@ -86,13 +86,19 @@ function cleanTranslation(raw: string): string {
   // "포기하다: 완전히 포기하다" 형태에서 앞부분만 남기기
   if (cleaned.includes(':')) {
     const split = cleaned.split(':');
-    cleaned = split[0].trim();
+    const firstPart = split[0];
+    if (firstPart) {
+      cleaned = firstPart.trim();
+    }
   }
 
   // 너무 길면 첫 번째 의미만
   if (cleaned.length > 30) {
     const parts = cleaned.split(/[,;]/);
-    cleaned = parts[0].trim();
+    const firstPart = parts[0];
+    if (firstPart) {
+      cleaned = firstPart.trim();
+    }
   }
 
   return cleaned;
@@ -136,6 +142,7 @@ async function main() {
 
   for (let i = startIdx; i < needsKorean.length; i++) {
     const fw = needsKorean[i];
+    if (!fw) continue;
     const input = buildTranslationInput(fw.word, fw.definition_en || fw.meaning);
     const result = await translateWithGoogle(input);
 

@@ -46,14 +46,17 @@ async function main() {
   const seen = new Set<string>();
   const words: BaseWord[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',');
+  const dataLines = lines.slice(1);
+  for (const line of dataLines) {
+    const cols = line.split(',');
     const rawWord = (cols[0] || '').trim().toLowerCase();
     const pos = (cols[1] || '').trim().toLowerCase();
     const cefr = (cols[2] || '').trim().toUpperCase();
 
     // 슬래시로 된 변형어 → 첫 번째만
-    const word = rawWord.split('/')[0].replace(/[^a-z]/g, '');
+    const firstPart = rawWord.split('/')[0];
+    if (!firstPart) continue;
+    const word = firstPart.replace(/[^a-z]/g, '');
     if (!word || word.length < 3) continue;
     if (SKIP_POS.has(pos)) continue;
     if (STOP.has(word)) continue;

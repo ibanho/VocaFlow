@@ -101,7 +101,7 @@ function buildTranslationInput(word: string, defEn?: string): string {
 }
 
 /**
- * 번역 결과 정제: 불필요한 기호 제거, 길이 제한
+ * 번역 결과 정제: 불필요한 기호 제거, 괄호 깨짐 방지
  */
 function cleanTranslation(raw: string): string {
   let cleaned = raw
@@ -109,10 +109,15 @@ function cleanTranslation(raw: string): string {
     .replace(/^"(.*)"$/, '$1') // 따옴표 제거
     .trim();
 
-  // 너무 길면 첫 번째 의미만
+  // 문장 전체가 번역되어 너무 길면 첫 번째 뜻만 추출하되, 괄호가 도중에 짤리지 않도록 정교하게 파싱
   if (cleaned.length > 30) {
-    const parts = cleaned.split(/[,;]/);
-    cleaned = parts[0].trim();
+    // 괄호 안에 있는 콤마는 분할 기준에서 제외하는 정규식 적용
+    // 외부 콤마나 세미콜론으로만 분할
+    const parts = cleaned.split(/[,;](?![^(]*\))/);
+    const firstPart = parts[0];
+    if (firstPart) {
+      cleaned = firstPart.trim();
+    }
   }
 
   return cleaned;
@@ -158,6 +163,7 @@ async function main() {
 
   for (let i = startIdx; i < needsKorean.length; i++) {
     const fw = needsKorean[i];
+    if (!fw) continue;
     const input = buildTranslationInput(fw.word, fw.definition_en || fw.meaning);
     const result = await translateWithPapago(input);
 

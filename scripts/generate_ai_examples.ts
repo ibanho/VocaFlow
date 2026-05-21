@@ -44,7 +44,8 @@ Return ONLY a JSON object with this exact structure, nothing else:
     messages: [{ role: 'user', content: prompt }]
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const content = response.content[0];
+  const text = content && content.type === 'text' ? content.text : '';
   try {
     return JSON.parse(text);
   } catch (e) {

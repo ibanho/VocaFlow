@@ -6,3 +6,8 @@ body {
 .flashcard-face {
   backface-visibility: hidden;
 }
+
+/* Hide Quasar Notify badge for premium review notifications */
+.hidden-badge {
+  display: none !important;
+}
