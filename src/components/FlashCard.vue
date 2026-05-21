@@ -41,23 +41,44 @@
           <q-tooltip class="bg-primary text-white text-caption">발음 듣기</q-tooltip>
         </q-btn>
 
-        <q-card-section class="text-center q-pb-none">
+        <q-card-section class="text-center q-pb-none q-pt-md">
           <div class="text-h6 text-primary text-weight-bold q-mb-xs">{{ card.word }}</div>
           
-          <div class="text-subtitle2 text-grey-6 q-mb-sm font-mono" v-if="dictInfo?.phonetic">
+          <div class="text-subtitle2 text-grey-6 q-mb-xs font-mono" v-if="dictInfo?.phonetic">
             {{ dictInfo.phonetic }}
           </div>
           
-          <div class="text-h4 text-weight-bold q-mb-md text-dark-blue transition-meaning" :class="{ 'translation-loading': loadingTranslation }">
-            {{ displayMeaning }}
+          <!-- 기본 뜻은 항상 중앙에 크고 뚜렷하게 고정! -->
+          <div class="text-h4 text-weight-bold q-mb-sm text-dark-blue">
+            {{ card.meaning }}
           </div>
           
-          <div>
-            <q-badge color="secondary" outline class="q-px-sm q-py-xs text-subtitle2 q-mb-md brand-badge">
+          <div class="q-mb-sm">
+            <q-badge color="secondary" outline class="q-px-sm q-py-xs text-subtitle2 brand-badge">
               {{ card.pos }}
             </q-badge>
           </div>
         </q-card-section>
+
+        <!-- AI 문맥 번역을 이전 뜻 덮어쓰기 대신 어노테이션 카드로 함께 제공 -->
+        <div class="q-mx-md q-mb-sm q-pa-sm ai-translation-box" v-if="loadingTranslation || translationResult">
+          <div v-if="loadingTranslation" class="flex flex-center q-py-xs">
+            <q-spinner-dots color="primary" size="1.2em" />
+            <span class="text-caption text-grey-6 q-ml-sm">AI 문맥 해석 분석 중...</span>
+          </div>
+          <div v-else-if="translationResult" class="fade-in">
+            <div class="text-caption text-weight-bold text-primary flex items-center q-mb-xs">
+              <q-icon name="psychology" class="q-mr-xs text-accent" size="16px" />
+              AI 문맥 상세 해석
+              <q-icon name="info" size="12px" class="text-grey-5 q-ml-xs">
+                <q-tooltip class="bg-dark text-white text-caption">영영 사전의 정의문을 한국어로 실시간 분석한 상세 뉘앙스입니다.</q-tooltip>
+              </q-icon>
+            </div>
+            <div class="text-caption text-grey-8 leading-relaxed font-weight-medium">
+              {{ translationResult }}
+            </div>
+          </div>
+        </div>
         
         <q-separator v-if="loadingDict || dictInfo" class="q-mx-md bg-grey-2" />
 
@@ -104,7 +125,7 @@ const emit = defineEmits<{
 
 const dictInfo = ref<DictionaryResponse | null>(null);
 const loadingDict = ref(false);
-const displayMeaning = ref(props.card.meaning);
+const translationResult = ref('');
 const loadingTranslation = ref(false);
 
 const flipCard = () => {
@@ -115,9 +136,6 @@ const flipCard = () => {
 
 watch(() => props.isFlipped, async (newVal) => {
   if (newVal) {
-    // 카드를 뒤집을 때 우선 기존 DB 뜻으로 즉시 세팅해 딜레이 없는 UX 확보
-    displayMeaning.value = props.card.meaning;
-
     if (!dictInfo.value) {
       loadingDict.value = true;
       dictInfo.value = await fetchDictionaryInfo(props.card.word);
@@ -130,7 +148,7 @@ watch(() => props.isFlipped, async (newVal) => {
     try {
       const translated = await fetchRealtimeTranslation(props.card.word, englishDef);
       if (translated) {
-        displayMeaning.value = translated;
+        translationResult.value = translated;
       }
     } catch (err) {
       console.error('Failed to load realtime translation:', err);
@@ -143,7 +161,7 @@ watch(() => props.isFlipped, async (newVal) => {
 // Reset dict info and meaning when card changes
 watch(() => props.card.id, () => {
   dictInfo.value = null;
-  displayMeaning.value = props.card.meaning;
+  translationResult.value = '';
 });
 
 // Play TTS Pronunciation
@@ -271,13 +289,32 @@ const speakWord = () => {
   font-family: 'Outfit', 'Roboto', monospace;
 }
 
-.transition-meaning {
-  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+.ai-translation-box {
+  background: linear-gradient(135deg, rgba(25, 118, 210, 0.04) 0%, rgba(38, 166, 154, 0.04) 100%);
+  border: 1px dashed rgba(25, 118, 210, 0.2);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.02);
+  transition: all 0.3s ease;
 }
 
-.translation-loading {
-  opacity: 0.5;
-  transform: scale(0.98);
+.ai-translation-box:hover {
+  border-color: rgba(25, 118, 210, 0.4);
+  background: linear-gradient(135deg, rgba(25, 118, 210, 0.06) 0%, rgba(38, 166, 154, 0.06) 100%);
+}
+
+.fade-in {
+  animation: fadeIn 0.4s ease forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>
 

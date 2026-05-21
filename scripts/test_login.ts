@@ -13,7 +13,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 });
 
 async function testLogin() {
-  const email = 'testuser_1779264927372@vocaflow.com';
+  const email = 'testuser_1779358551052@vocaflow.com';
   const password = 'password123';
 
   console.log(`Testing login for ${email}...`);
